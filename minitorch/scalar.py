@@ -29,7 +29,7 @@ class ScalarHistory:
     """`ScalarHistory` stores the history of `Function` operations that was
     used to construct the current Variable.
 
-    Attributes
+    Attributes:
     ----------
         last_fn : The last Function that was called.
         ctx : The context for that Function.
@@ -91,6 +91,50 @@ class Scalar:
     def __rmul__(self, b: ScalarLike) -> Scalar:
         return self * b
 
+    def __eq__(self, other: ScalarLike) -> "Scalar":
+        """Return self == other as a Scalar."""
+        return EQ.apply(self, other)
+
+    def __lt__(self, other: ScalarLike) -> "Scalar":
+        """Return self < other as a Scalar."""
+        return LT.apply(self, other)
+
+    def __add__(self, other: ScalarLike) -> "Scalar":
+        """Return self + other as a Scalar."""
+        return Add.apply(self, other)
+
+    def __neg__(self) -> "Scalar":
+        """Return -self as a Scalar."""
+        return Neg.apply(self)
+
+    def log(self) -> "Scalar":
+        """Return log(self) as a Scalar."""
+        return Log.apply(self)
+
+    def exp(self) -> "Scalar":
+        """Return exp(self) as a Scalar."""
+        return Exp.apply(self)
+
+    def inv(self) -> "Scalar":
+        """Return 1/self as a Scalar."""
+        return Inv.apply(self)
+
+    def sigmoid(self) -> "Scalar":
+        """Return sigmoid(self) as a Scalar."""
+        return Sigmoid.apply(self)
+
+    def relu(self) -> "Scalar":
+        """Return relu(self) as a Scalar."""
+        return ReLU.apply(self)
+
+    def __sub__(self, other: ScalarLike) -> "Scalar":
+        """Return self - other as a Scalar."""
+        return Add.apply(self, Neg.apply(other))
+
+    def __rsub__(self, other: ScalarLike) -> "Scalar":
+        """Return other - self as a Scalar."""
+        return Add.apply(Neg.apply(self), other)
+
     # Variable elements for backprop
 
     def accumulate_derivative(self, x: Any) -> None:
@@ -98,7 +142,6 @@ class Scalar:
         Should only be called during autodifferentiation on leaf variables.
 
         Args:
-        ----
             x: value to be accumulated
 
         """
@@ -112,21 +155,38 @@ class Scalar:
         return self.history is not None and self.history.last_fn is None
 
     def is_constant(self) -> bool:
+        """Return True if this variable is constant (no history)."""
         return self.history is None
 
     @property
     def parents(self) -> Iterable[Variable]:
-        """Get the variables used to create this one."""
+        """Return the parent variables of this variable."""
         assert self.history is not None
         return self.history.inputs
 
     def chain_rule(self, d_output: Any) -> Iterable[Tuple[Variable, Any]]:
+        """Applies the chain rule to compute the derivative of the output with respect to each input variable.
+
+        This method is used to compute the derivative of the output of a function with respect to its input variables.
+        It recursively applies the chain rule to each operation in the computation history of the variable, starting from the output.
+        The method returns an iterable of tuples, where each tuple contains a variable and its corresponding derivative.
+
+        Args:
+            d_output (Any): The derivative of the output with respect to which the chain rule is applied.
+
+        Returns:
+            Iterable[Tuple[Variable, Any]]: An iterable of tuples, where each tuple contains a variable and its corresponding derivative.
+        """
         h = self.history
         assert h is not None
         assert h.last_fn is not None
         assert h.ctx is not None
 
-        raise NotImplementedError("Need to include this file from past assignment.")
+        local_grads = h.last_fn._backward(h.ctx, d_output)
+
+        # Yield each input along with its corresponding gradient
+        for inp, grad in zip(h.inputs, local_grads):
+            yield inp, grad
 
     def backward(self, d_output: Optional[float] = None) -> None:
         """Calls autodiff to fill in the derivatives for the history of this object.
@@ -140,8 +200,6 @@ class Scalar:
         if d_output is None:
             d_output = 1.0
         backpropagate(self, d_output)
-
-    raise NotImplementedError("Need to include this file from past assignment.")
 
 
 def derivative_check(f: Any, *scalars: Scalar) -> None:

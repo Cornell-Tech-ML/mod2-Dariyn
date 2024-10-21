@@ -41,7 +41,9 @@ class TensorOps:
     @staticmethod
     def reduce(
         fn: Callable[[float, float], float], start: float = 0.0
-    ) -> Callable[[Tensor, int], Tensor]: ...
+    ) -> Callable[[Tensor, int], Tensor]:
+        """Reduce placeholder"""
+        ...
 
     @staticmethod
     def matrix_multiply(a: Tensor, b: Tensor) -> Tensor:
@@ -197,6 +199,9 @@ class SimpleOps(TensorOps):
             a (:class:`TensorData`): tensor to reduce over
             dim (int): int of dim to reduce
 
+            start: The initial value for the reduction (default is 0.0).
+
+
         Returns:
             :class:`TensorData` : new tensor
 
@@ -261,8 +266,30 @@ def tensor_map(
         in_shape: Shape,
         in_strides: Strides,
     ) -> None:
-        # TODO: Implement for Task 2.3.
-        raise NotImplementedError("Need to implement for Task 2.3")
+        # Get total number of elements in the output tensor
+        if len(out_shape) > MAX_DIMS or len(in_shape) > MAX_DIMS:
+            raise ValueError(f"Tensors cannot have more than {MAX_DIMS} dimensions")
+
+        out_size = int(np.prod(out_shape))
+
+        # Create arrays to store indices for the input and output tensors
+        out_index: Index = np.empty(len(out_shape), dtype=np.int32)
+        in_index: Index = np.empty(len(in_shape), dtype=np.int32)
+
+        # Iterate through all positions in the output tensor
+        for ordinal in range(out_size):
+            # Convert ordinal to multidimensional index for the output tensor
+            to_index(ordinal, out_shape, out_index)
+
+            # Map the out_index to the corresponding in_index using broadcasting
+            broadcast_index(out_index, out_shape, in_shape, in_index)
+
+            # Compute the position in storage for both input and output
+            out_pos = index_to_position(out_index, out_strides)
+            in_pos = index_to_position(in_index, in_strides)
+
+            # Apply the function and store the result in the output storage
+            out[out_pos] = fn(in_storage[in_pos])
 
     return _map
 
@@ -306,8 +333,37 @@ def tensor_zip(
         b_shape: Shape,
         b_strides: Strides,
     ) -> None:
-        # TODO: Implement for Task 2.3.
-        raise NotImplementedError("Need to implement for Task 2.3")
+        if (
+            len(out_shape) > MAX_DIMS
+            or len(a_shape) > MAX_DIMS
+            or len(b_shape) > MAX_DIMS
+        ):
+            raise ValueError(f"Tensors cannot have more than {MAX_DIMS} dimensions")
+
+        # Calculate total number of elements in the output tensor
+        out_size = int(np.prod(out_shape))
+
+        # Create arrays to hold indices for the output and input tensors
+        out_index: Index = np.empty(len(out_shape), dtype=np.int32)
+        a_index: Index = np.empty(len(a_shape), dtype=np.int32)
+        b_index: Index = np.empty(len(b_shape), dtype=np.int32)
+
+        # Iterate over all elements of the output tensor
+        for ordinal in range(out_size):
+            # Convert ordinal to multidimensional index for the output tensor
+            to_index(ordinal, out_shape, out_index)
+
+            # Use broadcasting rules to compute the corresponding indices
+            broadcast_index(out_index, out_shape, a_shape, a_index)
+            broadcast_index(out_index, out_shape, b_shape, b_index)
+
+            # Get the flat position in memory for the output and input tensors
+            out_pos = index_to_position(out_index, out_strides)
+            a_pos = index_to_position(a_index, a_strides)
+            b_pos = index_to_position(b_index, b_strides)
+
+            # Apply the function to the two inputs and store the result in the output
+            out[out_pos] = fn(a_storage[a_pos], b_storage[b_pos])
 
     return _zip
 
@@ -337,8 +393,30 @@ def tensor_reduce(
         a_strides: Strides,
         reduce_dim: int,
     ) -> None:
-        # TODO: Implement for Task 2.3.
-        raise NotImplementedError("Need to implement for Task 2.3")
+        if len(out_shape) > MAX_DIMS or len(a_shape) > MAX_DIMS:
+            raise ValueError(f"Tensors cannot have more than {MAX_DIMS} dimensions")
+        out_size = int(np.prod(out_shape))
+
+        out_index: Index = np.empty(len(out_shape), dtype=np.int32)
+
+        for ordinal in range(out_size):
+            to_index(ordinal, out_shape, out_index)
+
+            assert out_index[reduce_dim] == 0
+            out_val = 0.0
+
+            for i in range(a_shape[reduce_dim]):
+                a_index = np.copy(out_index)
+                a_index[reduce_dim] = i
+
+                a_pos = index_to_position(a_index, a_strides)
+
+                if i == 0:
+                    out_val = a_storage[a_pos]
+                else:
+                    out_val = fn(out_val, a_storage[a_pos])
+            out_pos = index_to_position(out_index, out_strides)
+            out[out_pos] = out_val
 
     return _reduce
 

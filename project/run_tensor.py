@@ -11,7 +11,48 @@ def RParam(*shape):
     r = 2 * (minitorch.rand(shape) - 0.5)
     return minitorch.Parameter(r)
 
-# TODO: Implement for Task 2.5.
+
+class Network(minitorch.Module):
+    def __init__(self, hidden_layers):
+        super().__init__()
+
+        # Submodules
+        self.layer1 = Linear(2, hidden_layers)
+        self.layer2 = Linear(hidden_layers, hidden_layers)
+        self.layer3 = Linear(hidden_layers, 1)
+
+    def forward(self, x):
+        h = self.layer1.forward(x).relu()
+        h = self.layer2.forward(h).relu()
+        return self.layer3.forward(h).sigmoid()
+
+
+class Linear(minitorch.Module):
+    def __init__(self, in_size, out_size):
+        super().__init__()
+        self.weights = RParam(in_size, out_size)
+        self.bias = RParam(out_size)
+        self.out_size = out_size
+
+    def forward(self, x):
+        """
+        Forward pass for the linear layer.
+
+        This method computes the output of the linear layer by performing a matrix multiplication
+        between the input tensor `x` and the weights tensor `self.weights`, followed by adding the bias tensor `self.bias`.
+        The result is then returned as the output of the layer.
+
+        Args:
+            x (Tensor): The input tensor to the linear layer.
+
+        Returns:
+            Tensor: The output tensor of the linear layer.
+        """
+        x_b = x.view(*x.shape, 1)
+        w_b = self.weights.value.view(1, *self.weights.value.shape)
+        val1 = x_b * w_b
+        val2 = val1.sum(dim=1).contiguous().view(x.shape[0], self.out_size)
+        return val2 + self.bias.value.view(1, self.out_size)
 
 def default_log_fn(epoch, total_loss, correct, losses):
     print("Epoch ", epoch, " loss ", total_loss, "correct", correct)
