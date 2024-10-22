@@ -95,9 +95,19 @@ class Tensor:
         self.f = backend
 
     def requires_grad_(self, x: bool) -> None:
-        self.history = History()
+        """Sets the requires_grad attribute of the tensor.
+
+        Args:
+            x (bool): If True, sets requires_grad to True, otherwise sets it to False.
+        """
+        self.history = History() if x else None
 
     def requires_grad(self) -> bool:
+        """Returns True if the tensor requires gradient, otherwise returns False.
+
+        Returns:
+            bool: True if the tensor requires gradient, otherwise False.
+        """
         return self.history is not None
 
     def to_numpy(self) -> npt.NDArray[np.float64]:
@@ -106,6 +116,16 @@ class Tensor:
 
         """
         return self.contiguous()._tensor._storage.reshape(self.shape)
+
+    @property
+    def size(self) -> int:
+        """Returns size of tensor"""
+        return self._tensor.size
+
+    @property
+    def dims(self) -> int:
+        """Returns dimension of tensor"""
+        return self._tensor.dims
 
     def _ensure_tensor(self, b: TensorLike) -> Tensor:
         """Turns a python number into a tensor with the same backend."""
@@ -194,6 +214,15 @@ class Tensor:
         # END CODE CHANGE (2021)
 
     def zeros(self, shape: Optional[UserShape] = None) -> Tensor:
+        """Creates a tensor filled with zeros of the specified shape.
+
+        Args:
+            shape (Optional[UserShape]): The shape of the tensor to create.
+
+        Returns:
+            Tensor: A tensor filled with zeros.
+        """
+
         def zero(shape: UserShape) -> Tensor:
             return Tensor.make(
                 [0.0] * int(operators.prod(shape)), shape, backend=self.backend
@@ -235,18 +264,46 @@ class Tensor:
         self.grad += x
 
     def is_leaf(self) -> bool:
-        """True if this variable created by the user (no `last_fn`)"""
+        """Checks if this variable is a leaf node, meaning it was created directly by the user and has no `last_fn` attribute.
+
+        Returns:
+            bool: True if the variable is a leaf node, False otherwise.
+        """
         return self.history is not None and self.history.last_fn is None
 
     def is_constant(self) -> bool:
+        """Checks if this variable is a constant, meaning it has no history.
+
+        Returns:
+            bool: True if the variable is a constant, False otherwise.
+        """
         return self.history is None
 
     @property
     def parents(self) -> Iterable[Variable]:
+        """Returns the parents of this variable.
+
+        Raises:
+            AssertionError: If the variable has no history.
+
+        Returns:
+            Iterable[Variable]: An iterable of the variable's parents.
+        """
         assert self.history is not None
         return self.history.inputs
 
     def chain_rule(self, d_output: Any) -> Iterable[Tuple[Variable, Any]]:
+        """Applies the chain rule to compute the gradients of the inputs with respect to the output.
+
+        Args:
+            d_output (Any): The derivative of the output with respect to this variable.
+
+        Raises:
+            AssertionError: If the variable has no history, last_fn, or ctx.
+
+        Returns:
+            Iterable[Tuple[Variable, Any]]: An iterable of tuples, where each tuple contains an input variable and its derivative.
+        """
         h = self.history
         assert h is not None
         assert h.last_fn is not None
@@ -260,6 +317,14 @@ class Tensor:
         ]
 
     def backward(self, grad_output: Optional[Tensor] = None) -> None:
+        """Performs backpropagation to compute the gradients of the inputs with respect to the output.
+
+        Args:
+            grad_output (Optional[Tensor]): The gradient of the output with respect to this variable. Defaults to None.
+
+        Raises:
+            AssertionError: If grad_output is None and the variable is not scalar.
+        """
         if grad_output is None:
             assert self.shape == (1,), "Must provide grad_output if non-scalar"
             grad_output = Tensor.make([1.0], (1,), backend=self.backend)
@@ -274,6 +339,101 @@ class Tensor:
     def __matmul__(self, b: Tensor) -> Tensor:
         """Not used until Module 3"""
         return MatMul.apply(self, b)
+
+    def __add__(self, b: TensorLike) -> Tensor:
+        """Return self + other as a Tensor."""
+        other = self._ensure_tensor(b)  # Ensure 'other' is a tensor
+        return Add.apply(self, other)
+
+    def __radd__(self, b: TensorLike) -> Tensor:
+        """Return self + other as a Tensor."""
+        return self + b
+
+    def __sub__(self, other: TensorLike) -> Tensor:
+        """Return self - other as a Tensor."""
+        return Add.apply(self, -self._ensure_tensor(other))
+
+    def __rsub__(self, other: TensorLike) -> Tensor:
+        """Return other - self as a Tensor."""
+        return Add.apply(Neg.apply(self), self._ensure_tensor(other))
+
+    def __mul__(self, other: TensorLike) -> Tensor:
+        """Return self * other as a Tensor."""
+        return Mul.apply(self, self._ensure_tensor(other))
+
+    def __rmul__(self, other: TensorLike) -> Tensor:
+        """Return other * self as a Tensor."""
+        return Mul.apply(self._ensure_tensor(other), self)
+
+    def __neg__(self) -> Tensor:
+        """Return -self as a Tensor."""
+        return Neg.apply(self)
+
+    def __eq__(self, other: TensorLike) -> Tensor:
+        """Return self == other as a Tensor."""
+        return EQ.apply(self, self._ensure_tensor(other))
+
+    def __lt__(self, other: TensorLike) -> Tensor:
+        """Return self < other as a Tensor."""
+        return LT.apply(self, self._ensure_tensor(other))
+
+    def __gt__(self, b: TensorLike) -> Tensor:
+        """Return self > other as a Tensor."""
+        return LT.apply(self._ensure_tensor(b), self)
+        return LT.apply(self._ensure_tensor(b), self)
+
+    def log(self) -> Tensor:
+        """Return log(self) as a Tensor."""
+        return Log.apply(self)
+
+    def exp(self) -> Tensor:
+        """Return exp(self) as a Tensor."""
+        return Exp.apply(self)
+
+    def all(self, dim: Optional[int] = None) -> Tensor:
+        """Return all(self, dim) as a Tensor."""
+        if dim is None:
+            return All.apply(self.view(self.size), self._ensure_tensor(0))
+        else:
+            return All.apply(self, self._ensure_tensor(dim))
+
+    def is_close(self, t: Tensor) -> Tensor:
+        """Return is_close  (self) as a Tensor."""
+        return IsClose.apply(self, t)
+
+    def sigmoid(self) -> Tensor:
+        """Return sigmoid(self) as a Tensor."""
+        return Sigmoid.apply(self)
+
+    def relu(self) -> Tensor:
+        """Return relu(self) as a Tensor."""
+        return ReLU.apply(self)
+
+    def sum(self, dim: Optional[int] = None) -> Tensor:
+        """Return the sum over a specific dimension."""
+        if dim is None:
+            return Sum.apply(self.contiguous().view(self.size), self._ensure_tensor(0))
+        else:
+            return Sum.apply(self, self._ensure_tensor(dim))
+
+    def mean(self, dim: Optional[int] = None) -> Tensor:
+        """Compute the mean over dimension `dim`"""
+        if dim is not None:
+            return self.sum(dim) / self.shape[dim]
+        else:
+            return self.sum() / self.size
+
+    def permute(self, *order: int) -> Tensor:
+        """Permute the dimensions of the tensor."""
+        return Permute.apply(self, tensor(list(order)))
+
+    def view(self, *shape: int) -> Tensor:
+        """Reshape the tensor."""
+        return View.apply(self, tensor(list(shape)))
+
+    def zero_grad_(self) -> None:
+        """Set gradients of the tensor to None."""
+        self.grad = None
 
     @property
     def shape(self) -> UserShape:
