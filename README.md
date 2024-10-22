@@ -34,4 +34,4 @@ Dataset: Split (hidden layers: 8, learning rate = 0.5, time per epoch = 0.193,nu
 
 Dataset: Xor (hidden layers: 16, learning rate = 0.5, time per epoch = 0.597,number of epochs = 2000, number of points = 50)
 
-<img src="\images\mod2_XOR.png" width="50%">
+<img src="\images\mod2_xor.png" width="50%">
